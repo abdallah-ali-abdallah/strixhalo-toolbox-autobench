@@ -22,6 +22,12 @@ build/
 *.swp
 *.swo
 
+# Test artifacts
+.coverage
+coverage.xml
+.pytest_cache/
+htmlcov/
+
 # OS
 .DS_Store
 Thumbs.db
