@@ -22,6 +22,7 @@ from .utils import (
     discover_toolboxes,
     normalize_power_profile,
     parse_csv_values,
+    power_profile_label,
     validate_power_profiles,
 )
 
@@ -62,6 +63,10 @@ def _get_app():
 
     @app.command()
     def bench(
+        folder: Optional[List[str]] = typer.Option(
+            None, '--folder', '-f',
+            help='Folders to scan for GGUF files (non-recursive).',
+        ),
         model_paths: Optional[List[str]] = typer.Argument(
             None,
             help='GGUF file paths or folders. Comma-separated for multiple.',
@@ -74,9 +79,20 @@ def _get_app():
             False, '--run-all-backends',
             help='Benchmark all discovered llama-* toolboxes.',
         ),
+        quick: bool = typer.Option(
+            False, '--quick',
+            help='Quick preset: -p 512 -n 512.',
+            rich_help_panel='Token Modes',
+        ),
+        medium: bool = typer.Option(
+            False, '--medium',
+            help='Medium preset: -p 1024,4096,8192,16384 -n 512,2048.',
+            rich_help_panel='Token Modes',
+        ),
         mode: str = typer.Option(
             'quick', '--mode', '-m',
             help='Token preset: quick, medium, or custom.',
+            hidden=True,
         ),
         prompt_tokens: Optional[str] = typer.Option(
             None, '--prompt-tokens', '-p',
@@ -127,29 +143,35 @@ def _get_app():
                 raise typer.Exit(1)
             return
 
-        # Validate inputs
-        if not model_paths:
-            typer.echo(color('Error: at least one model path or folder is required.', Colors.YELLOW))
+        # Validate inputs (folder takes precedence when no positional args)
+        if not model_paths and not folder:
+            typer.echo(color('Error: at least one model path or folder (--folder) is required.', Colors.YELLOW))
             raise typer.Exit(1)
 
-        # Parse comma-separated paths
+        # Parse comma-separated paths and merge with --folder
         parsed_paths = []
-        for p in model_paths:
-            parts = [x.strip() for x in p.split(',') if x.strip()]
-            parsed_paths.extend(parts)
+        if folder:
+            for f in folder:
+                parts = [x.strip() for x in f.split(',') if x.strip()]
+                parsed_paths.extend(parts)
+        if model_paths:
+            for p in model_paths:
+                parts = [x.strip() for x in p.split(',') if x.strip()]
+                parsed_paths.extend(parts)
 
         if not parsed_paths:
-            typer.echo(color('Error: no valid model paths provided.', Colors.YELLOW))
+            typer.echo(color('Error: at least one model path, folder (--folder), or positional argument is required.', Colors.YELLOW))
             raise typer.Exit(1)
 
-        # Determine mode
-        actual_mode = mode
-        if mode == 'quick':
+        # Determine mode (flags take precedence, custom tokens imply custom mode)
+        if quick:
             actual_mode = 'quick'
-        elif mode == 'medium':
+        elif medium:
             actual_mode = 'medium'
-        else:
+        elif prompt_tokens or gen_tokens:
             actual_mode = 'custom'
+        else:
+            actual_mode = mode
 
         # Validate power profiles early
         if power_profiles:
